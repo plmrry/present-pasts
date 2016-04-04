@@ -1,0 +1,210 @@
+<!doctype html>
+<html>
+<head>
+<style>
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.16/d3.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/rxjs/4.0.8/rx.all.min.js"></script>
+
+<script>
+'use strict'
+const stream = Rx.Observable;
+
+const imageSubject = new Rx.ReplaySubject();
+const domSubject = new Rx.ReplaySubject(1);
+
+const height = 400;
+const number_of_images = 500;
+const images_directory = 'resize-300';
+
+const defaultHeight = height;
+
+const formatter = d3.format('04d');
+
+const zoomHandler = d3.behavior.zoom()
+  .scaleExtent([0, 1]);
+
+const zoomEvent$ = domSubject
+  .map(s => {
+    zoomHandler(s);
+    return zoomHandler;
+  })
+  .flatMap(observableFromD3Event('zoom'))
+  .pluck('event')
+  .shareReplay()
+
+const zoomScale$ = zoomEvent$
+  .pluck('scale')
+  .startWith(1)
+
+const zoomTranslate$ = zoomEvent$
+  .pluck('translate', '0')
+  .startWith(0)
+
+const images$ = stream
+  .range(1, number_of_images)
+  .map(n => `ALL${formatter(n)}`)
+  .map(name => {
+    const scopedDom = domSubject
+      .map(d => d.select(`.scope-${name}`))
+      .first()
+      .shareReplay();
+
+    const loaded$ = scopedDom
+      .flatMap(observableFromD3Event('load'))
+      // .flatMap(d => stream.timer(500))
+      .map(o => ({
+          // imageHeight: o.node.height,
+          imageWidth: o.node.width,
+          // imageWidth: 100
+      }))
+      // .flatMap(stream.timer(100))
+      // .map(o => ({
+      //   imageWidth: 100
+      // }))
+      .map(obj => memo => {
+        return Object.assign(memo, obj);
+      })
+
+    return stream
+      .merge(
+        loaded$
+      )
+      .startWith({
+        name,
+        height: defaultHeight,
+        imageWidth: 0,
+        width: 0,
+        left: 0,
+        offset: 0
+      })
+      .scan(apply)
+  })
+  .scan((a,b) => {
+    return a.concat(b);
+  }, [])
+  .flatMap(list => {
+    return stream.combineLatest(list);
+  })
+  .combineLatest(
+    zoomScale$,
+    (arr, scale) => arr.map(d => { d.width = d.imageWidth * scale; return d })
+  )
+  .combineLatest(
+    zoomTranslate$,
+    (arr, trans) => arr.map(d => { d.left = d.offset + trans; return d })
+  )
+  .map(arr => {
+    return arr
+      .map((d, i, arr) => {
+        if (i === 0) return d;
+        const last = arr[i-1];
+        d.offset = last.offset + last.width;
+        return d;
+      })
+  });
+
+const size$ = observableFromD3Event('resize')(d3.select(window))
+  .pluck('node')
+  .startWith(window)
+  .map((o) => ({
+    width: o.innerWidth,
+    height: o.innerHeight
+  }))
+
+/**
+ * DRIVER
+ */
+
+const app = d3
+  .select('body')
+  .style('margin', 0)
+  .select('#app')
+  .style({
+    height: `${height}px`,
+    border: '1px solid black',
+    position: 'relative'
+  })
+
+const dom_reducer$ = images$
+  .combineLatest(
+    size$,
+    (images, size) => ({ images, size })
+  )
+  .map(model => dom => {
+    dom
+      .style('width', `${model.size.width}px`)
+      .style('height', `${model.size.height}px`)
+      .style('background-color', 'black')
+
+    const frame = dom
+      .selectAll('.frame')
+      .data([model]);
+
+    frame
+      .enter()
+      .append('div')
+      .classed('frame', true)
+      .style('position', 'absolute')
+
+    frame
+      .style('top', `${(model.size.height/2) - (defaultHeight/2)}px`)
+
+    let image = frame
+      .selectAll('img')
+      .data(d => d.images, d => d.name);
+
+    image
+      .enter()
+      .append('img')
+      .attr('src', d=> `${images_directory}/${d.name}.jpg`)
+      .attr('class', d => `scope-${d.name}`)
+
+    image
+      .style({
+        height: d => `${d.height}px`,
+        left: d => `${d.left}px`,
+        top: d => `${d.top}px`,
+        position: 'absolute',
+      })
+      .each(function(d) {
+        if (d.width > 0)
+          d3.select(this).style('width', `${d.width}px`)
+      })
+
+    return dom;
+  });
+
+const dom$ = dom_reducer$
+  .scan(apply, app)
+
+dom$.subscribe(domSubject.asObserver());
+
+function apply(o, fn) { return fn(o); }
+
+function log() {
+  console.log.apply(console, arguments)
+}
+
+function observableFromD3Event(type) {
+  return function(selection) {
+    return stream
+      .create(observer =>
+        selection.on(type, function(d) {
+          observer.onNext({
+            datum: d,
+            node: this,
+            event: d3.event
+          });
+        })
+      );
+  };
+}
+</script>
+
+</body>
+</html>

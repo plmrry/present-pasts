@@ -1,0 +1,212 @@
+<!doctype html>
+<html>
+<head>
+<style>
+
+</style>
+</head>
+<body>
+  <div id="app">
+
+  </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.16/d3.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/rxjs/4.0.8/rx.all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.4.4/babel.min.js"></script>
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js"></script> -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r74/three.min.js"></script> -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cyclejs-core/6.0.3/cycle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cyclejs-dom/9.1.0/cycle-dom.min.js"></script>
+
+<script id='babel' type="text/babel">
+  'use strict'
+  const stream = Rx.Observable;
+
+  const imageSubject = new Rx.ReplaySubject();
+  const domSubject = new Rx.ReplaySubject(1);
+
+  domSubject
+    .map(dom => dom.selectAll('.image'))
+    .flatMap(d => observableFromD3Event('load')(d))
+    .map(({ node }) => ({
+      name: d3.select(node).datum().name,
+      height: node.height,
+      width: node.width,
+      naturalWidth: node.naturalWidth,
+      naturalHeight: node.naturalHeight
+    }))
+    .do(log)
+    .subscribe(d => {
+      // d.on('load', d => { debugger })
+      // console.log(d)
+      // debugger
+    })
+
+  const size$ = observableFromD3Event('resize')(d3.select(window))
+    .pluck('node')
+    .startWith(window)
+    .map(({ innerWidth, innerHeight }) => ({
+      width: innerWidth,
+      height: innerHeight
+    }));
+
+  const containerSizeRatio = {
+    height: 0.9,
+    width: 0.9
+  };
+
+  const container$ = size$
+    .map(({ height, width }) => ({
+      height: height * containerSizeRatio.height,
+      width: width * containerSizeRatio.width,
+      class: 'container',
+      position: 'relative'
+    }))
+    .shareReplay();
+
+  const frameHeightRatio = 0.4;
+
+  const frame$ = container$
+    .map(({ height, width }) => {
+      let frameHeight = height * frameHeightRatio;
+      let frameWidth = width;
+      let top = (height/2) - (frameHeight/2);
+      return {
+        height: frameHeight,
+        // width: frameWidth,
+        width: 5000,
+        top,
+        class: 'frame',
+        parent: '.container'
+      }
+    })
+    .shareReplay()
+
+  const image$ = stream
+    .from(['ALL0001', 'ALL0002', 'ALL0003'])
+    .combineLatest(
+      frame$,
+      (name, frame) => ({
+        name: `${name}.jpg`,
+        height: frame.height,
+        parent: `.${frame.class}`,
+        class: 'image'
+      })
+    )
+    .scan((a,b) => a.concat(b), [])
+
+  /**
+   * DRIVER
+   */
+
+  let app = d3.select('#app');
+
+  container$.subscribe(container => {
+    let _container = app
+      .selectAll(`.${container.class}`)
+      .data([ container ]);
+    _container
+      .enter()
+      .append('div')
+      .attr('class', d => d.class)
+      .style('border', '1px solid blue')
+      .style('position', d => d.position)
+    _container
+      .style({
+        width: d => `${d.width}px`,
+        height: d => `${d.height}px`
+      })
+  })
+
+  frame$.subscribe(frame => {
+    let _frame = d3.select(frame.parent)
+      .selectAll(`.${frame.class}`)
+      .data([ frame ]);
+    _frame
+      .enter()
+      .append('div')
+      .attr('class', d => d.class)
+      .style('border', '1px solid black')
+      .style('position', 'absolute');
+    _frame
+      .style({
+        width: d => `${d.width}px`,
+        height: d => `${d.height}px`,
+        top: d => `${d.top}px`
+      })
+  })
+
+  image$.subscribe(image => {
+    let _image = d3.select(image[0].parent)
+      .selectAll(`.${image[0].class}`)
+      .data(image, d => d.name)
+    _image
+      .enter()
+      .append('img')
+      .attr('class', d => d.class)
+      .attr('src', d => `images/${d.name}`)
+    _image
+      .style({
+        height: d => `${d.height}px`,
+        // width: '100px'
+      });
+
+    domSubject.onNext(d3.select(image[0].parent));
+  });
+
+  // const frame = container.selectAll('.frame').data([{}])
+  //
+  // function main ({DOM}) {
+  //   const add$ = DOM
+  //     .select('.add')
+  //     .events('click')
+  //     .map(ev => 1);
+  //
+  //   const count$ = add$
+  //     .startWith(0)
+  //     .scan((total, change) => total + change)
+  //
+  //   return {
+  //     DOM: count$.map(count =>
+  //       CycleDOM.div('.counter', [
+  //         'Count: ' + count,
+  //         CycleDOM.button('.add', 'Add')
+  //       ])
+  //     )
+  //   };
+  // }
+  //
+  // const sources = {
+  //   DOM: CycleDOM.makeDOMDriver('#app')
+  // }
+  //
+  // Cycle.run(main, sources);
+
+  function log() {
+    console.log.apply(console, arguments)
+  }
+
+  function observableFromD3Event(type) {
+  	return function(selection) {
+  		return stream
+  			.create(observer =>
+  				selection.on(type, function(d) {
+  					observer.onNext({
+  						datum: d,
+  						node: this,
+  						event: d3.event
+  					});
+  				})
+  			);
+  	};
+  }
+</script>
+
+<script>
+  'use strict'
+  var text = d3.select('#babel').text();
+  var compiled = Babel.transform(text, { presets: ['es2015'] }).code;
+  (new Function(compiled))();
+</script>
+
+</body>
+</html>

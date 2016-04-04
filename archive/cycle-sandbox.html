@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+<style>
+
+</style>
+</head>
+<body>
+  <div id="app">
+
+  </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.16/d3.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/rxjs/4.0.8/rx.all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.4.4/babel.min.js"></script>
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js"></script> -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r74/three.min.js"></script> -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cyclejs-core/6.0.3/cycle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cyclejs-dom/9.1.0/cycle-dom.min.js"></script>
+
+<script id='babel' type="text/babel">
+  'use strict'
+
+  const stream = Rx.Observable;
+
+  function main ({DOM}) {
+    const add$ = DOM
+      .select('.add')
+      .events('click')
+      .map(ev => 1);
+
+    const count$ = add$
+      .startWith(0)
+      .scan((total, change) => total + change)
+
+    return {
+      DOM: count$.map(count =>
+        CycleDOM.div('.counter', [
+          'Count: ' + count,
+          CycleDOM.button('.add', 'Add')
+        ])
+      )
+    };
+  }
+
+  const sources = {
+    DOM: CycleDOM.makeDOMDriver('#app')
+  }
+
+  Cycle.run(main, sources);
+</script>
+
+<script>
+  'use strict'
+  const text = d3.select('#babel').text();
+  const compiled = Babel.transform(text, { presets: ['es2015'] }).code;
+  (new Function(compiled))();
+</script>
+
+</body>
+</html>
