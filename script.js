@@ -8,13 +8,13 @@ const imageSubject = new Rx.ReplaySubject();
 const domSubject = new Rx.ReplaySubject(1);
 const impetus$ = new Rx.ReplaySubject(1);
 
-const height = 400;
-const number_of_images = 500;
-const images_directory = 'images-300px';
+var height = 400;
+var number_of_images = 500;
+var images_directory = 'images-300px';
 
-const defaultHeight = height;
+var defaultHeight = height;
 
-const formatter = d3.format('04d');
+var formatter = d3.format('04d');
 
 const zoomHandler = d3.behavior.zoom()
   .scaleExtent([0, 1.3]);
@@ -26,24 +26,26 @@ const zoomEvent$ = zoomHandler$
   .pluck('event')
   .shareReplay();
 
-const zoomScale$ = zoomEvent$
+var zoomScale$ = zoomEvent$
   .pluck('scale')
   .startWith(1);
 
 const zoomTranslate$ = zoomEvent$
   .pluck('translate', '0');
 
-const images$ = stream
+var images$ = stream
   .range(1, number_of_images)
-  .map(n => `ALL${formatter(n)}`)
-  .flatMap((name, index) => stream.timer(100 * index).map(d => name))
-  .map(name => {
-    const scopedDom = domSubject
+  .map(function(n) { return `ALL${formatter(n)}` })
+  .flatMap(function(name, index) {
+    return stream.timer(100 * index).map(d => name);
+  })
+  .map(function(name) {
+    var scopedDom = domSubject
       .map(d => d.select(`.scope-${name}`))
       .first()
       .shareReplay();
 
-    const loaded$ = scopedDom
+    var loaded$ = scopedDom
       .flatMap(observableFromD3Event('load'))
       .map(o => ({
         imageWidth: o.node.width,
@@ -70,7 +72,7 @@ const images$ = stream
       })
       .scan(apply);
   })
-  .scan((a,b) => {
+  .scan(function (a,b) {
     return a.concat(b);
   }, [])
   .flatMapLatest(list => {
@@ -90,13 +92,13 @@ const images$ = stream
       // .map(d => { d.left = d.offset; return d; })
       .map((d, i, arr) => {
         if (i === 0) return d;
-        const last = arr[i-1];
+        var last = arr[i-1];
         d.offset = last.offset + last.width;
         return d;
       });
   });
 
-const size$ = observableFromD3Event('resize')(d3.select(window))
+var size$ = observableFromD3Event('resize')(d3.select(window))
   .pluck('node')
   .startWith(window)
   .map((o) => ({
@@ -108,7 +110,7 @@ const size$ = observableFromD3Event('resize')(d3.select(window))
  * DRIVER
  */
 
-const app = d3
+var app = d3
   .select('body')
   .style('margin', 0)
   .select('#app')
@@ -118,7 +120,7 @@ const app = d3
     position: 'relative'
   });
 
-const dom_reducer$ = images$
+var dom_reducer$ = images$
   .combineLatest(
     size$,
     (images, size) => ({ images, size })
@@ -129,7 +131,7 @@ const dom_reducer$ = images$
       .style('height', `${model.size.height}px`)
       .style('background-color', 'black');
 
-    const frame = dom
+    var frame = dom
       .selectAll('.frame')
       .data([model]);
 
@@ -224,3 +226,5 @@ function observableFromD3Event(type) {
       );
   };
 }
+
+/* global d3, Rx */
